@@ -130,8 +130,74 @@ define_class!(
                 }
             }
         }
+
+        // files opened with us (Finder "Open With", double-click on an .html file, `open -a`).
+        // the direct object is a list of file references, each handed on as a file:// URL.
+        #[unsafe(method(handleOpenDocumentsEvent:withReplyEvent:))]
+        fn handle_open_documents_event(&self, event: *mut AnyObject, _reply: *mut AnyObject) {
+            const KEY_DIRECT_OBJECT: u32 = 0x2d2d2d2d; // '----'
+            unsafe {
+                let list: *mut AnyObject =
+                    msg_send![event, paramDescriptorForKeyword: KEY_DIRECT_OBJECT];
+                if list.is_null() {
+                    return;
+                }
+                let sender_bundle_id = sender_bundle_id(event);
+
+                // a single file may come as a plain descriptor instead of a one-item list
+                let count: isize = msg_send![list, numberOfItems];
+                let items: Vec<*mut AnyObject> = if count < 1 {
+                    vec![list]
+                } else {
+                    (1..=count)
+                        .map(|i| msg_send![list, descriptorAtIndex: i])
+                        .collect()
+                };
+
+                for item in items {
+                    if item.is_null() {
+                        continue;
+                    }
+                    let file_url: *mut AnyObject = msg_send![item, fileURLValue];
+                    if file_url.is_null() {
+                        continue;
+                    }
+                    let ns_string: *mut NSString = msg_send![file_url, absoluteString];
+                    if ns_string.is_null() {
+                        continue;
+                    }
+                    let url_string = (*ns_string).to_string();
+                    if let Some(cb) = self.ivars().open_urls.borrow().as_ref() {
+                        cb(sender_bundle_id.clone(), url_string);
+                    }
+                }
+            }
+        }
+
+        // AppKit installs its own open-documents handler during finishLaunching, which would
+        // replace ours, so it is registered again here, after AppKit's.
+        #[unsafe(method(handleAppWillFinishLaunching:))]
+        fn handle_app_will_finish_launching(&self, _notification: &NSNotification) {
+            register_open_documents_handler(self);
+        }
     }
 );
+
+fn register_open_documents_handler(bridge: &EventBridge) {
+    const CLASS_CORE_EVENT: u32 = 0x61657674; // 'aevt'
+    const EVENT_ID_OPEN_DOCUMENTS: u32 = 0x6f646f63; // 'odoc'
+    unsafe {
+        let manager: *mut AnyObject =
+            msg_send![objc2::class!(NSAppleEventManager), sharedAppleEventManager];
+        let _: () = msg_send![
+            manager,
+            setEventHandler: bridge,
+            andSelector: sel!(handleOpenDocumentsEvent:withReplyEvent:),
+            forEventClass: CLASS_CORE_EVENT,
+            andEventID: EVENT_ID_OPEN_DOCUMENTS
+        ];
+    }
+}
 
 // bundle id of whoever sent us this GetURL event, for source_app-based opening rules
 fn sender_bundle_id(event: *mut AnyObject) -> Option<String> {
@@ -186,7 +252,8 @@ pub fn hide_dock_icon() {
         .setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 }
 
-// sets up native hooks for app-resign-active (quit_on_lost_focus) and GetURL apple events.
+// sets up native hooks for app-resign-active (quit_on_lost_focus) and GetURL/open-documents
+// apple events.
 // doesn't touch NSApplication's delegate, so it won't step on winit's.
 //
 // call this before anything else in main() - on a cold launch via URL scheme, macOS can deliver
@@ -213,6 +280,12 @@ pub fn register_event_bridge() -> Option<Retained<EventBridge>> {
             Some(objc2_app_kit::NSApplicationDidResignActiveNotification),
             None,
         );
+        center.addObserver_selector_name_object(
+            &bridge,
+            sel!(handleAppWillFinishLaunching:),
+            Some(objc2_app_kit::NSApplicationWillFinishLaunchingNotification),
+            None,
+        );
 
         let manager: *mut AnyObject =
             msg_send![objc2::class!(NSAppleEventManager), sharedAppleEventManager];
@@ -226,6 +299,7 @@ pub fn register_event_bridge() -> Option<Retained<EventBridge>> {
             andEventID: EVENT_ID_GET_URL
         ];
     }
+    register_open_documents_handler(&bridge);
 
     Some(bridge)
 }

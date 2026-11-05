@@ -83,9 +83,21 @@ fn main() {
     //info!("{:?}", args);
 
     let mut url = "".to_string();
-    let url_input_maybe = args.iter().find(|i| i.starts_with("http"));
+    let url_input_maybe = args
+        .iter()
+        .find(|i| i.starts_with("http") || i.starts_with("file://"));
     if let Some(url_input) = url_input_maybe {
         url = url_input.to_string();
+    } else if let Some(file_url) = args
+        .iter()
+        .skip(1)
+        .find(|arg| !arg.starts_with("--"))
+        .and_then(|arg| fs::canonicalize(arg).ok())
+        .filter(|path| path.is_file())
+        .and_then(|path| url::Url::from_file_path(path).ok())
+    {
+        // a file passed on the command line (e.g. an .html file opened with Browsers)
+        url = file_url.to_string();
     }
 
     let show_gui = !args.contains(&"--no-gui".to_string());

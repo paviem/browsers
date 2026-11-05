@@ -167,6 +167,9 @@ REG ADD "%RegistryRoot%\Software\Clients\StartMenuInternet\software.Browsers\Cap
 REG ADD "%RegistryRoot%\Software\Clients\StartMenuInternet\software.Browsers\Capabilities\URLAssociations" /v http /t REG_SZ /d "software.Browsers" /f 1>nul
 REG ADD "%RegistryRoot%\Software\Clients\StartMenuInternet\software.Browsers\Capabilities\URLAssociations" /v https /t REG_SZ /d "software.Browsers" /f 1>nul
 
+REG ADD "%RegistryRoot%\Software\Clients\StartMenuInternet\software.Browsers\Capabilities\FileAssociations" /v .htm /t REG_SZ /d "software.Browsers" /f 1>nul
+REG ADD "%RegistryRoot%\Software\Clients\StartMenuInternet\software.Browsers\Capabilities\FileAssociations" /v .html /t REG_SZ /d "software.Browsers" /f 1>nul
+
 REG ADD "%RegistryRoot%\Software\Clients\StartMenuInternet\software.Browsers\DefaultIcon" /ve /d "%ProgramDir%\browsers.exe,0" /f 1>nul
 
 REG ADD "%RegistryRoot%\Software\Clients\StartMenuInternet\software.Browsers\shell\open\command" /ve /d "\"%ProgramDir%\browsers.exe\"" /f 1>nul
