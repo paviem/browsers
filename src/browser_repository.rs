@@ -522,7 +522,11 @@ impl SupportedAppRepository {
             profile_args_fn: |profile_cli_arg_value| {
                 // Profiles from profiles.ini are identified by name,
                 // but selectable profiles (Firefox 144+) only by directory.
-                if Path::new(profile_cli_arg_value).is_absolute() {
+                // The placeholder profile (profiles.ini could not be read) has no name, and
+                // `-P ""` would open Firefox's profile chooser, so its default profile is used instead.
+                if profile_cli_arg_value.is_empty() {
+                    vec![]
+                } else if Path::new(profile_cli_arg_value).is_absolute() {
                     vec!["--profile".to_string(), profile_cli_arg_value.to_string()]
                 } else {
                     vec!["-P".to_string(), profile_cli_arg_value.to_string()]
@@ -920,4 +924,27 @@ fn convert_spotify_uri(_: &CommonBrowserProfile, url_str: &str) -> String {
         .map(|(resource_type, resource_id)| format!("spotify:{}:{}", resource_type, resource_id));
 
     return uri_maybe.unwrap_or_else(|| unknown);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn firefox() -> SupportedApp {
+        SupportedAppRepository::firefox_based_app(
+            AppIdentifier::new("org.mozilla.firefox", "firefox.desktop", "Firefox"),
+            PathBuf::new(),
+            PathBuf::new(),
+            PathBuf::new(),
+        )
+    }
+
+    #[test]
+    fn firefox_profile_args() {
+        let app = firefox();
+        assert_eq!(app.get_profile_args("default-release"), vec!["-P", "default-release"]);
+        assert_eq!(app.get_profile_args("/tmp/profile"), vec!["--profile", "/tmp/profile"]);
+        // placeholder profile when profiles.ini could not be read
+        assert!(app.get_profile_args("").is_empty());
+    }
 }
